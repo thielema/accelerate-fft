@@ -219,40 +219,52 @@ fft :: forall sh e. (Slice sh, Shape sh, IsFloating e, Elt e)
     -> Int
     -> Acc (Array (sh:.Int) (Complex e))
     -> Acc (Array (sh:.Int) (Complex e))
-fft sign sh sz arr = go sz 0 1
-  where
-    go :: Int -> Int -> Int -> Acc (Array (sh:.Int) (Complex e))
-    go len offset stride
-      | len == 2
-      = A.generate (constant (sh :. len)) swivel
+fft = fftDIT
 
-      | otherwise
-      = combine
-          (go (len `div` 2) offset            (stride * 2))
-          (go (len `div` 2) (offset + stride) (stride * 2))
+fftDIT :: forall sh e. (Slice sh, Shape sh, IsFloating e, Elt e)
+    => e
+    -> sh
+    -> Int
+    -> Acc (Array (sh:.Int) (Complex e))
+    -> Acc (Array (sh:.Int) (Complex e))
+fftDIT sign sh len arr =
+   if len<=1
+     then arr
+     else
+        let len2 = div len 2
+            twiddle ni ki =
+               let n = A.fromIntegral ni
+                   k = A.fromIntegral ki
+                   w = 2*pi*k/n
+               in  A.lift $ cos w :+ A.constant sign * sin w
+            twiddles =
+               extrudeVector (A.constant sh) $
+               A.generate (A.lift $ Z:.len2) $
+                  twiddle (A.constant len) . indexHead
+            subTransforms =
+               fftDIT sign (sh:.2) len2 $
+               A.backpermute
+                  (A.lift $ A.constant sh :. (2::Int) :. len2)
+                  (A.lift1 $
+                   \(globalIx :. evenOdd :. k
+                        ::  Exp sh :. Exp Int :. Exp Int) ->
+                      globalIx :. 2*k+evenOdd)
+                  arr
+            evens = A.slice subTransforms (A.lift $ A.Any :. (0::Int) :. A.All)
+            odds =
+               A.zipWith (*) twiddles $
+               A.slice subTransforms (A.lift $ A.Any :. (1::Int) :. A.All)
+        in  append (A.zipWith (+) evens odds) (A.zipWith (-) evens odds)
 
-      where
-        len'    = the (unit (constant len))
-        offset' = the (unit (constant offset))
-        stride' = the (unit (constant stride))
+extrudeVector ::
+   (A.Shape ix, A.Slice ix, A.Elt a) =>
+   Exp ix -> Acc (Array DIM1 a) -> Acc (Array (ix:.Int) a)
+extrudeVector sh y =
+   A.backpermute
+      (A.lift $ sh :. A.indexHead (A.shape y))
+      (A.index1 . A.indexHead)
+      y
 
-        swivel ix =
-          let sh' :. sz' = unlift ix :: Exp sh :. Exp Int
-          in
-          sz' ==* 0 ? ( (arr ! lift (sh' :. offset')) + (arr ! lift (sh' :. offset' + stride'))
-          {-  ==* 1-} , (arr ! lift (sh' :. offset')) - (arr ! lift (sh' :. offset' + stride')) )
-
-        combine evens odds =
-          let odds' = A.generate (A.shape odds) (\ix -> twiddle len' (indexHead ix) * odds!ix)
-          in
-          append (A.zipWith (+) evens odds') (A.zipWith (-) evens odds')
-
-        twiddle n' i' =
-          let n = A.fromIntegral n'
-              i = A.fromIntegral i'
-              k = 2*pi*i/n
-          in
-          lift ( cos k :+ A.constant sign * sin k )
 
 #ifdef ACCELERATE_CUDA_BACKEND
 -- FFT using the CUFFT library to enable high performance for the CUDA backend of
