@@ -29,6 +29,7 @@ module Data.Array.Accelerate.Math.FFT (
   fft3D, fft3D',
   fft,
   fftDIT,
+  fftDITLoop,
   fftDIF,
 
 ) where
@@ -279,6 +280,60 @@ _fftDIT sign sh len arr =
                A.zipWith (*) twiddles $
                A.slice subTransforms (A.lift $ A.Any :. (1::Int) :. A.All)
         in  append (A.zipWith (+) evens odds) (A.zipWith (-) evens odds)
+
+fftDITLoop :: forall sh e. (Slice sh, Shape sh, IsFloating e, Elt e)
+    => Exp e
+    -> Acc (Array (sh:.Int) (Complex e))
+    -> Acc (Array (sh:.Int) (Complex e))
+fftDITLoop sign =
+   flip A.slice (A.lift $ A.Any :. (0::Int) :. A.All)
+   .
+   A.awhile
+      (\x -> A.unit $ (A.indexHead $ A.indexTail $ A.shape x) >* 1)
+      (ditStep sign)
+   .
+   A.awhile
+      (\x -> A.unit $ (A.indexHead $ A.shape x) >* 1)
+      twist
+   .
+   A.replicate (A.lift $ A.Any :. (1::Int) :. A.All)
+
+ditStep ::
+   forall sh a.
+   (A.Shape sh, A.Slice sh, A.Elt a, A.IsFloating a) =>
+   Exp a ->
+   Acc (Array (sh:.Int:.Int) (Complex a)) ->
+   Acc (Array (sh:.Int:.Int) (Complex a))
+ditStep sign x =
+   let sh :. m :. len2 =
+          A.unlift $ A.shape x  ::  Exp sh :. Exp Int :. Exp Int
+       sh2 = A.lift $ sh :. div m 2
+       twiddles = twiddleFactors sign len2
+       takeHalf start =
+          A.backpermute
+             (A.lift $ sh2 :. len2)
+             (A.lift1 $
+              \(ix :. k :. j  ::  Exp sh :. Exp Int :. Exp Int) ->
+                 ix :. 2*k+start :. j)
+       evens = takeHalf 0 x
+       odds = A.zipWith (*) (extrudeVector sh2 twiddles) $ takeHalf 1 x
+   in  append (A.zipWith (+) evens odds) (A.zipWith (-) evens odds)
+
+twist ::
+   forall sh a.
+   (A.Shape sh, A.Slice sh, A.Elt a) =>
+   Acc (Array (sh:.Int:.Int) a) ->
+   Acc (Array (sh:.Int:.Int) a)
+twist x =
+   let sh :. m :. n =
+          A.unlift $ A.shape x  ::  Exp sh :. Exp Int :. Exp Int
+   in  A.backpermute
+          (A.lift $ sh :. 2*m :. div n 2)
+          (A.lift1 $
+           \(globalIx :. k :. j ::  Exp sh :. Exp Int :. Exp Int) ->
+              globalIx :. div k 2 :. 2*j + mod k 2)
+          x
+
 
 fftDIF :: forall sh e. (Slice sh, Shape sh, IsFloating e, Elt e)
     => e
