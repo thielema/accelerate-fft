@@ -238,7 +238,6 @@ fftDIT sign sh len =
                    w = 2*pi*k/n
                in  A.lift $ cos w :+ A.constant sign * sin w
             twiddles =
-               extrudeVector (A.constant sh) $
                A.generate (A.lift $ Z:.len2) $
                   twiddle (A.constant len) . indexHead
             subTransform =
@@ -253,7 +252,7 @@ fftDIT sign sh len =
               let subs = subTransform arr
                   evens = A.slice subs (A.lift $ A.Any :. (0::Int) :. A.All)
                   odds =
-                     A.zipWith (*) twiddles $
+                     A.zipWith (*) (extrudeVector (A.constant sh) twiddles) $
                      A.slice subs (A.lift $ A.Any :. (1::Int) :. A.All)
               in  append (A.zipWith (+) evens odds) (A.zipWith (-) evens odds)
 
