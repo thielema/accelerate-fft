@@ -227,7 +227,43 @@ fftDIT :: forall sh e. (Slice sh, Shape sh, IsFloating e, Elt e)
     -> Int
     -> Acc (Array (sh:.Int) (Complex e))
     -> Acc (Array (sh:.Int) (Complex e))
-fftDIT sign sh len arr =
+fftDIT sign sh len =
+   if len<=1
+     then id
+     else
+        let len2 = div len 2
+            twiddle ni ki =
+               let n = A.fromIntegral ni
+                   k = A.fromIntegral ki
+                   w = 2*pi*k/n
+               in  A.lift $ cos w :+ A.constant sign * sin w
+            twiddles =
+               extrudeVector (A.constant sh) $
+               A.generate (A.lift $ Z:.len2) $
+                  twiddle (A.constant len) . indexHead
+            subTransform =
+               fftDIT sign (sh:.2) len2 .
+               A.backpermute
+                  (A.lift $ A.constant sh :. (2::Int) :. len2)
+                  (A.lift1 $
+                   \(globalIx :. evenOdd :. k
+                        ::  Exp sh :. Exp Int :. Exp Int) ->
+                      globalIx :. 2*k+evenOdd)
+        in  \arr ->
+              let subs = subTransform arr
+                  evens = A.slice subs (A.lift $ A.Any :. (0::Int) :. A.All)
+                  odds =
+                     A.zipWith (*) twiddles $
+                     A.slice subs (A.lift $ A.Any :. (1::Int) :. A.All)
+              in  append (A.zipWith (+) evens odds) (A.zipWith (-) evens odds)
+
+_fftDIT :: forall sh e. (Slice sh, Shape sh, IsFloating e, Elt e)
+    => e
+    -> sh
+    -> Int
+    -> Acc (Array (sh:.Int) (Complex e))
+    -> Acc (Array (sh:.Int) (Complex e))
+_fftDIT sign sh len arr =
    if len<=1
      then arr
      else
@@ -242,7 +278,7 @@ fftDIT sign sh len arr =
                A.generate (A.lift $ Z:.len2) $
                   twiddle (A.constant len) . indexHead
             subTransforms =
-               fftDIT sign (sh:.2) len2 $
+               _fftDIT sign (sh:.2) len2 $
                A.backpermute
                   (A.lift $ A.constant sh :. (2::Int) :. len2)
                   (A.lift1 $
