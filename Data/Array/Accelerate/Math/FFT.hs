@@ -232,14 +232,7 @@ fftDIT sign sh len =
      then id
      else
         let len2 = div len 2
-            twiddle ni ki =
-               let n = A.fromIntegral ni
-                   k = A.fromIntegral ki
-                   w = 2*pi*k/n
-               in  A.lift $ cos w :+ A.constant sign * sin w
-            twiddles =
-               A.generate (A.lift $ Z:.len2) $
-                  twiddle (A.constant len) . indexHead
+            twiddles = twiddleFactors sign (A.constant len2)
             subTransform =
                fftDIT sign (sh:.2) len2 .
                A.backpermute
@@ -267,15 +260,9 @@ _fftDIT sign sh len arr =
      then arr
      else
         let len2 = div len 2
-            twiddle ni ki =
-               let n = A.fromIntegral ni
-                   k = A.fromIntegral ki
-                   w = 2*pi*k/n
-               in  A.lift $ cos w :+ A.constant sign * sin w
             twiddles =
                extrudeVector (A.constant sh) $
-               A.generate (A.lift $ Z:.len2) $
-                  twiddle (A.constant len) . indexHead
+               twiddleFactors sign (A.constant len2)
             subTransforms =
                _fftDIT sign (sh:.2) len2 $
                A.backpermute
@@ -290,6 +277,21 @@ _fftDIT sign sh len arr =
                A.zipWith (*) twiddles $
                A.slice subTransforms (A.lift $ A.Any :. (1::Int) :. A.All)
         in  append (A.zipWith (+) evens odds) (A.zipWith (-) evens odds)
+
+twiddle ::
+   (Elt a, IsFloating a) =>
+   a -> Exp Int -> Exp Int -> Exp (Complex a)
+twiddle sign n2i ki =
+   let n2 = A.fromIntegral n2i
+       k  = A.fromIntegral ki
+       w = pi*k/n2
+   in  A.lift $ cos w :+ A.constant sign * sin w
+
+twiddleFactors ::
+   (Elt a, IsFloating a) =>
+   a -> Exp Int -> Acc (Array DIM1 (Complex a))
+twiddleFactors sign len2 =
+   A.generate (A.lift $ Z:.len2) $ twiddle sign len2 . indexHead
 
 extrudeVector ::
    (A.Shape ix, A.Slice ix, A.Elt a) =>
