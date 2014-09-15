@@ -27,7 +27,9 @@ module Data.Array.Accelerate.Math.FFT (
   fft1D, fft1D',
   fft2D, fft2D',
   fft3D, fft3D',
-  fft
+  fft,
+  fftDIT,
+  fftDIF,
 
 ) where
 
