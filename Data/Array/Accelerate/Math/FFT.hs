@@ -278,6 +278,62 @@ _fftDIT sign sh len arr =
                A.slice subTransforms (A.lift $ A.Any :. (1::Int) :. A.All)
         in  append (A.zipWith (+) evens odds) (A.zipWith (-) evens odds)
 
+fftDIF :: forall sh e. (Slice sh, Shape sh, IsFloating e, Elt e)
+    => e
+    -> sh
+    -> Int
+    -> Acc (Array (sh:.Int) (Complex e))
+    -> Acc (Array (sh:.Int) (Complex e))
+fftDIF sign sh len =
+   if len<=1
+     then id
+     else
+        let len2 = div len 2
+            twiddles = twiddleFactors sign (A.constant len2)
+            takeHalf start =
+               A.backpermute
+                  (A.constant $ sh :. len2)
+                  (A.lift1 $
+                   \(globalIx :. k  ::  Exp sh :. Exp Int) ->
+                      globalIx :. start + k)
+        in  \arr ->
+              let part0 = takeHalf 0 arr
+                  part1 = takeHalf (A.constant len2) arr
+                  evens = A.zipWith (+) part0 part1
+                  odds =
+                     A.zipWith (*) (extrudeVector (A.constant sh) twiddles) $
+                     A.zipWith (-) part0 part1
+              in  merge $ fftDIF sign (sh:.2) len2 $ stack evens odds
+
+merge ::
+   forall sh a.
+   (A.Shape sh, A.Slice sh, A.Elt a) =>
+   Acc (Array (sh:.Int:.Int) a) ->
+   Acc (Array (sh:.Int) a)
+merge x =
+   A.backpermute
+      (case A.unlift $ A.shape x  ::  Exp sh :. Exp Int :. Exp Int of
+         sh :. _evenOdd :. n -> A.lift $ sh :. 2*n)
+      (A.lift1 $
+       \(globalIx :. k  ::  Exp sh :. Exp Int) ->
+          globalIx :. mod k 2 :. div k 2)
+      x
+
+stack ::
+   forall sh a.
+   (A.Shape sh, A.Slice sh, A.Elt a) =>
+   Acc (Array (sh:.Int) a) ->
+   Acc (Array (sh:.Int) a) ->
+   Acc (Array (sh:.Int:.Int) a)
+stack x y =
+   A.generate
+      (case A.unlift $ A.shape x :: Exp sh :. Exp Int of
+         sh :. n -> A.lift $ sh :. (2::Int) :. n)
+      (A.lift1 $
+       \(globalIx :. evenOdd :. k  ::  Exp sh :. Exp Int :. Exp Int) ->
+          let ix = A.lift $ globalIx :. k
+          in  evenOdd ==* 0 ? (x ! ix, y ! ix))
+
 twiddle ::
    (Elt a, IsFloating a) =>
    a -> Exp Int -> Exp Int -> Exp (Complex a)
