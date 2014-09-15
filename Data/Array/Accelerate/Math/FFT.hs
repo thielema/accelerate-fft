@@ -236,7 +236,7 @@ fftDIT sign sh len =
             subTransform =
                fftDIT sign (sh:.2) len2 .
                A.backpermute
-                  (A.lift $ A.constant sh :. (2::Int) :. len2)
+                  (A.constant $ sh :. (2::Int) :. len2)
                   (A.lift1 $
                    \(globalIx :. evenOdd :. k
                         ::  Exp sh :. Exp Int :. Exp Int) ->
@@ -266,7 +266,7 @@ _fftDIT sign sh len arr =
             subTransforms =
                _fftDIT sign (sh:.2) len2 $
                A.backpermute
-                  (A.lift $ A.constant sh :. (2::Int) :. len2)
+                  (A.constant $ sh :. (2::Int) :. len2)
                   (A.lift1 $
                    \(globalIx :. evenOdd :. k
                         ::  Exp sh :. Exp Int :. Exp Int) ->
