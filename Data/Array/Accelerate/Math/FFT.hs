@@ -234,7 +234,7 @@ fftDIT sign sh len =
      then id
      else
         let len2 = div len 2
-            twiddles = twiddleFactors sign (A.constant len2)
+            twiddles = twiddleFactors (A.constant sign) (A.constant len2)
             subTransform =
                fftDIT sign (sh:.2) len2 .
                A.backpermute
@@ -264,7 +264,7 @@ _fftDIT sign sh len arr =
         let len2 = div len 2
             twiddles =
                extrudeVector (A.constant sh) $
-               twiddleFactors sign (A.constant len2)
+               twiddleFactors (A.constant sign) (A.constant len2)
             subTransforms =
                _fftDIT sign (sh:.2) len2 $
                A.backpermute
@@ -291,7 +291,7 @@ fftDIF sign sh len =
      then id
      else
         let len2 = div len 2
-            twiddles = twiddleFactors sign (A.constant len2)
+            twiddles = twiddleFactors (A.constant sign) (A.constant len2)
             takeHalf start =
                A.backpermute
                   (A.constant $ sh :. len2)
@@ -338,16 +338,16 @@ stack x y =
 
 twiddle ::
    (Elt a, IsFloating a) =>
-   a -> Exp Int -> Exp Int -> Exp (Complex a)
+   Exp a -> Exp Int -> Exp Int -> Exp (Complex a)
 twiddle sign n2i ki =
    let n2 = A.fromIntegral n2i
        k  = A.fromIntegral ki
        w = pi*k/n2
-   in  A.lift $ cos w :+ A.constant sign * sin w
+   in  A.lift $ cos w :+ sign * sin w
 
 twiddleFactors ::
    (Elt a, IsFloating a) =>
-   a -> Exp Int -> Acc (Array DIM1 (Complex a))
+   Exp a -> Exp Int -> Acc (Array DIM1 (Complex a))
 twiddleFactors sign len2 =
    A.generate (A.lift $ Z:.len2) $ twiddle sign len2 . indexHead
 
